@@ -4,9 +4,10 @@
 #include <unistd.h> // For sleep function
 #include <pthread.h> // For threading
 
-#define NUM_USERS 5 // Number of users (threads)
-#define NUM_JOBS_PER_USER 10
-#define JOB_LENGTH_TYPES 3
+#define Num_Users 5 // Number of users (threads)
+#define Num_Jobs_Per_User 10
+#define Job_Length_Types 3
+#define Num_Shared_Var
 
 typedef enum { PRINT, SCAN } JobType;
 
@@ -16,9 +17,6 @@ typedef struct {
     int length;
 } Job;
 
-// Shared variables to demonstrate race condition
-int printer = 0;
-int scanner = 0;
 
 // Function to generate a random job
 Job generate_job(char user) {
@@ -27,7 +25,7 @@ Job generate_job(char user) {
     job.job_type = (rand() % 2 == 0) ? PRINT : SCAN;
 
     // Randomly determine job length
-    int length_type = rand() % JOB_LENGTH_TYPES;
+    int length_type = rand() % Job_Length_Types;
     int min_pages, max_pages;
     switch (length_type) {
         case 0:  // SHORT
@@ -50,10 +48,10 @@ Job generate_job(char user) {
 // Function to simulate a job
 void* execute_jobs(void* arg) {
     char user = *(char*)arg; // Retrieve the user character
-    Job jobs[NUM_JOBS_PER_USER];
+    Job jobs[Num_Jobs_Per_User];
 
     // Generate jobs for the user
-    for (int i = 0; i < NUM_JOBS_PER_USER; i++) {
+    for (int i = 0; i < Num_Jobs_Per_User; i++) {
         jobs[i] = generate_job(user);
         printf("User        %c generated job: %s with length %d pages.\n",
                jobs[i].user,
@@ -62,7 +60,7 @@ void* execute_jobs(void* arg) {
     }
 
     // Execute jobs
-    for (int i = 0; i < NUM_JOBS_PER_USER; i++) {
+    for (int i = 0; i < Num_Jobs_Per_User; i++) {
         Job current_job = jobs[i];
         printf("User        %c started job: %s with length %d pages.\n",
                current_job.user,
@@ -98,15 +96,15 @@ int main() {
     printf("\nExecuting jobs without any synchronization:\n");
 
     pthread_t threads[NUM_USERS]; // Array to hold thread IDs
-    char users[NUM_USERS] = { '1', '2' }; // User identifiers
+    char users[NUM_USERS] = { '1', '2', '3', '4', '5' }; // User identifiers
 
     // Create threads for each user
-    for (int i = 0; i < NUM_USERS; i++) {
+    for (int i = 0; i < Num_Users; i++) {
         pthread_create(&threads[i], NULL, execute_jobs, (void *)&users[i]);
     }
 
     // Wait for all threads to finish
-    for (int i = 0; i < NUM_USERS; i++) {
+    for (int i = 0; i < Num_Users; i++) {
         pthread_join(threads[i], NULL);
     }
 
