@@ -17,6 +17,11 @@ typedef struct {
     int arrival_time;
 } Job;
 
+pthread_mutex_t array_mutex = PTHREAD_MUTEX_INITIALIZER; //only for adding to the lists
+
+Job all_jobs[Num_Users * Num_Jobs_Per_User];
+int job_index = 0;
+
 int printer = 0;
 int scanner = 0;
 
@@ -51,38 +56,63 @@ Job generate_job(char user, int job_index) {
     return job;
 }
 
-// Function to execute 10 jobs for each user without synchronization
-void *execute_jobs(void *arg) {
+
+void *Order_queue(void *arg) {
     char user = *(char *)arg;
+
+    // Private array for this user's jobs
+    Job user_jobs[Num_Jobs_Per_User];
 
     for (int i = 0; i < Num_Jobs_Per_User; i++) {
         // Generate a job
-        Job job = generate_job(user, i);
+        user_jobs[i] = generate_job(user, i);
 
-        // Wait for the job's arrival time to simulate delay
-        sleep(job.arrival_time);
-
-        // Announce the start of the job
-        printf("User %c is starting a %s job. Length: %d pages, Arrival Time: %d\n",
-               job.user, (job.job_type == PRINT ? "PRINT" : "SCAN"), job.length, job.arrival_time);
-
-        // Check job type and process each page with a delay
-        if (job.job_type == PRINT) {
-            for (int page = 1; page <= job.length; page++) {
-                printf("User %c printing page %d of %d\n", job.user, page, job.length);
-                sleep(1);  // Simulate time taken to print each page
-            }
-            printf("User %c finished printing %d pages.\n", job.user, job.length);
-        } else {
-            for (int page = 1; page <= job.length; page++) {
-                printf("User %c scanning page %d of %d\n", job.user, page, job.length);
-                sleep(1);  // Simulate time taken to scan each page
-            }
-            printf("User %c finished scanning %d pages.\n", job.user, job.length);
-        }
+        // Print the job in the requested format
+        printf("User : %c, Job : %s, Length : %d, Arrival Time : %d\n",
+               user,
+               (user_jobs[i].job_type == PRINT ? "Print" : "Scan"),
+               user_jobs[i].length,
+               user_jobs[i].arrival_time);
     }
 
+
     return NULL;
+}
+
+    // Function to execute 10 jobs for each user without synchronization
+    void *execute_jobs(void *arg) {
+        char user = *(char *)arg;
+
+        for (int i = 0; i < Num_Jobs_Per_User; i++) {
+            // Generate a job
+            Job job = generate_job(user, i);
+
+            // Wait for the job's arrival time to simulate delay
+            //sleep(job.arrival_time);
+
+            // Announce the start of the job
+            //printf("User %c is starting a %s job. Length: %d pages, Arrival Time: %d\n",
+            //job.user, (job.job_type == PRINT ? "PRINT" : "SCAN"), job.length, job.arrival_time);
+
+            // Check job type and process each page with a delay
+            if (job.job_type == PRINT) {
+                for (int page = 1; page <= job.length; page++) {
+                    printf("User %c printing page %d of %d\n", job.user, page, job.length);
+                    sleep(1);  // Simulate time taken to print each page
+                }
+                printf("User %c finished printing %d pages.\n", job.user, job.length);
+            } else {
+                for (int page = 1; page <= job.length; page++) {
+                    printf("User %c scanning page %d of %d\n", job.user, page, job.length);
+                    sleep(1);  // Simulate time taken to scan each page
+                }
+                printf("User %c finished scanning %d pages.\n", job.user, job.length);
+            }
+        }
+
+        return NULL;
+    }
+
 }
 
 int main() {
@@ -95,7 +125,7 @@ int main() {
 
     // Create threads for each user
     for (int i = 0; i < Num_Users; i++) {
-        pthread_create(&threads[i], NULL, execute_jobs, (void *)&users[i]);
+        pthread_create(&threads[i], NULL, Order_queue, (void *)&users[i]);
     }
 
     // Wait for all threads to finish
