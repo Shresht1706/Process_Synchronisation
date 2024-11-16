@@ -3,10 +3,16 @@
 #include <time.h>
 #include <unistd.h>  // For sleep function
 #include <pthread.h> // For threading
+#include <queue>>
+#include <iostream>
 
 #define Num_Users 5           // Number of users (threads)
 #define Num_Jobs_Per_User 10  // Number of jobs per user
 #define Job_Length_Types 3
+#define Time_Quantum 2
+
+
+
 
 typedef enum { PRINT, SCAN } JobType;
 
@@ -15,15 +21,19 @@ typedef struct {
     JobType job_type;
     int length;
     int arrival_time;
+    int waiting_time;
 } Job;
 
 pthread_mutex_t array_mutex = PTHREAD_MUTEX_INITIALIZER; //only for adding to the lists
 
-Job all_jobs[Num_Users * Num_Jobs_Per_User];
-int job_index = 0;
+std::queue<Job> printer_queue; // Global queue for printer jobs
+std::queue<Job> scanner_queue; // Global queue for scanner jobs
+
 
 int printer = 0;
 int scanner = 0;
+
+std::queue<Job> job_queue;
 
 // Function to generate a single job for a user
 Job generate_job(char user, int job_index) {
@@ -57,63 +67,35 @@ Job generate_job(char user, int job_index) {
 }
 
 
-void *Order_queue(void *arg) {
-    char user = *(char *)arg;
+// Function to generate jobs and categorize them into printer and scanner vectors
+std::pair<std::vector<Job>, std::vector<Job>> order_queue(char user) {
+    std::vector<Job> printer_jobs;
+    std::vector<Job> scanner_jobs;
 
-    // Private array for this user's jobs
-    Job user_jobs[Num_Jobs_Per_User];
-
+    for (int i = 0; i < Num_Users; i++) {
+        char users[Num_Users] = { '1', '2', '3', '4', '5' };
     for (int i = 0; i < Num_Jobs_Per_User; i++) {
-        // Generate a job
-        user_jobs[i] = generate_job(user, i);
+        Job job = generate_job(user, i);
 
-        // Print the job in the requested format
-        printf("User : %c, Job : %s, Length : %d, Arrival Time : %d\n",
-               user,
-               (user_jobs[i].job_type == PRINT ? "Print" : "Scan"),
-               user_jobs[i].length,
-               user_jobs[i].arrival_time);
-    }
+        // Output the generated job
+        std::cout << "User : " << user
+                  << ", Job : " << (job.job_type == PRINT ? "Print" : "Scan")
+                  << ", Length : " << job.length
+                  << ", Arrival Time : " << job.arrival_time << std::endl;
 
-
-    return NULL;
-}
-
-    // Function to execute 10 jobs for each user without synchronization
-    void *execute_jobs(void *arg) {
-        char user = *(char *)arg;
-
-        for (int i = 0; i < Num_Jobs_Per_User; i++) {
-            // Generate a job
-            Job job = generate_job(user, i);
-
-            // Wait for the job's arrival time to simulate delay
-            //sleep(job.arrival_time);
-
-            // Announce the start of the job
-            //printf("User %c is starting a %s job. Length: %d pages, Arrival Time: %d\n",
-            //job.user, (job.job_type == PRINT ? "PRINT" : "SCAN"), job.length, job.arrival_time);
-
-            // Check job type and process each page with a delay
-            if (job.job_type == PRINT) {
-                for (int page = 1; page <= job.length; page++) {
-                    printf("User %c printing page %d of %d\n", job.user, page, job.length);
-                    sleep(1);  // Simulate time taken to print each page
-                }
-                printf("User %c finished printing %d pages.\n", job.user, job.length);
-            } else {
-                for (int page = 1; page <= job.length; page++) {
-                    printf("User %c scanning page %d of %d\n", job.user, page, job.length);
-                    sleep(1);  // Simulate time taken to scan each page
-                }
-                printf("User %c finished scanning %d pages.\n", job.user, job.length);
-            }
+        // Categorize job
+        if (job.job_type == PRINT) {
+            printer_jobs.push_back(job);
+        } else {
+            scanner_jobs.push_back(job);
         }
-
-        return NULL;
     }
 
+    return {printer_jobs, scanner_jobs};
 }
+
+
+
 
 int main() {
     srand(time(NULL)); // Seed random number generator
@@ -121,11 +103,11 @@ int main() {
     printf("\nExecuting jobs without any synchronization:\n");
 
     pthread_t threads[Num_Users]; // Array to hold thread IDs
-    char users[Num_Users] = { '1', '2', '3', '4', '5' }; // User identifiers
+    // User identifiers
 
     // Create threads for each user
     for (int i = 0; i < Num_Users; i++) {
-        pthread_create(&threads[i], NULL, Order_queue, (void *)&users[i]);
+        pthread_create(&threads[i], NULL, , (void *)&users[i]);
     }
 
     // Wait for all threads to finish
