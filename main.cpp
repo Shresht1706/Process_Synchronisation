@@ -65,10 +65,10 @@ std::pair<std::vector<Job>, std::vector<Job>> order_queue(char user) {
 
     char users_id[Num_Users] = { '1', '2', '3', '4', '5' }; // User IDs array
 
-    for (int u = 0; u < Num_Users; u++) { // Loop through users
-        char current_user = users_id[u]; // Get the current user's ID
-        for (int i = 0; i < Num_Jobs_Per_User; i++) { // Generate jobs for each user
-            Job job = generate_job(current_user, i); // Generate a job for the user
+    for (int u = 0; u < Num_Users; u++) { // user loop
+        char current_user = users_id[u];
+        for (int i = 0; i < Num_Jobs_Per_User; i++) { // job loop
+            Job job = generate_job(current_user, i);
             job.job_id = i+1;
 
             // Output the generated job
@@ -124,12 +124,12 @@ void UnsynchronizedExecution(std::vector<Job> printerJobs, std::vector<Job> scan
         scanner_queue.push(job);
     }
 
-    // Create threads for the printer and scanner
+    //threads for the printer and scanner
     std::thread printer_thread(process_job, std::ref(printer_queue), "Printer");
-
+    std::this_thread::sleep_for(std::chrono::seconds(1)); // makes sure overlap of printing doesnt happen
     std::thread scanner_thread(process_job, std::ref(scanner_queue), "Scanner");
 
-    // Wait for threads to complete
+    // thread completion
     printer_thread.join();
     scanner_thread.join();
 
@@ -140,7 +140,7 @@ int main() {
     srand(time(NULL)); // Seed random number generator
 
     // Generate and categorize jobs
-    auto [printerJobs, scannerJobs] = order_queue('A'); // Generate printer and scanner job vectors
+    auto [printerJobs, scannerJobs] = order_queue('A'); // printer and scanner job vectors
 
     // Call unsynchronized execution
     UnsynchronizedExecution(printerJobs, scannerJobs);
