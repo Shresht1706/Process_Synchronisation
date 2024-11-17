@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>  // For sleep function
 #include <thread>    // For threads
 #include <chrono>    // For sleep_for
 #include <vector>
 #include <queue>
 #include <iostream>
+#include <semaphore>
 
 #define Num_Users 5           // Number of users (threads)
 #define Num_Jobs_Per_User 10  // Number of jobs per user
@@ -190,7 +190,7 @@ void Unsynchronised_Execution(std::vector<Job> printerJobs, std::vector<Job> sca
 
     // Create threads for the printer and scanner
     std::thread printer_thread(process_job, std::ref(printer_queue), "Printer");
-    std::this_thread::sleep_for(std::chrono::seconds(1)); // Ensures no overlap in processing
+    std::this_thread::sleep_for(std::chrono::seconds(1)); // no processing overlap
     std::thread scanner_thread(process_job, std::ref(scanner_queue), "Scanner");
 
     // Wait for threads to complete
@@ -200,9 +200,7 @@ void Unsynchronised_Execution(std::vector<Job> printerJobs, std::vector<Job> sca
     std::cout << "All jobs processed!" << std::endl;
 }
 
-void MutexesExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs) {
-    std::mutex resource_mutex; // Mutex to ensure exclusive access to the shared resource
-
+void MutexExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs) {
     // Populate printer and scanner queues
     for (const auto& job : printerJobs) {
         printer_queue.push(job);
@@ -211,20 +209,54 @@ void MutexesExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs
         scanner_queue.push(job);
     }
 
-    // Thread function for processing jobs with mutex
-    auto process_job_with_mutex = [&](std::queue<Job>& job_queue, const std::string& resource_name) {
+    // Local variable to track the current time
+    int current_time = 0;
+
+    // Mutex to protect the critical section
+    std::mutex job_mutex;
+
+    // Function to simulate processing on a shared resource
+    auto process_job = [&current_time, &job_mutex](std::queue<Job>& job_queue, const std::string& resource_name) {
         while (true) {
-            std::lock_guard<std::mutex> lock(resource_mutex); // Lock the mutex
-            if (job_queue.empty()) {
-                return; // Exit the loop if the queue is empty
+            Job current_job;
+
+            {
+                std::lock_guard<std::mutex> lock(job_mutex);
+                if (job_queue.empty()) {
+                    break; // Exit if no more jobs
+                }
+                current_job = job_queue.front();
+                job_queue.pop();
             }
-            process_job(job_queue, resource_name); // Call existing function
+
+            // Wait until the current time reaches the job's arrival time
+            if (current_time < current_job.arrival_time) {
+                std::this_thread::sleep_for(std::chrono::seconds(current_job.arrival_time - current_time));
+                current_time = current_job.arrival_time; // Update current time to the job's arrival time
+            }
+
+            // Process the job
+            while (current_job.length > 0) {
+                // Simulate processing 2 pages
+                int pages_to_process = std::min(2, current_job.length);
+                std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate processing time
+
+                current_job.length -= pages_to_process;
+
+                std::cout << "User    " << current_job.user << " used " << resource_name << " for job id: " << current_job.job_id <<
+                          " and processed " << pages_to_process << " pages, pages left: " << current_job.length << std::endl;
+
+                // Increment current time for the next job processing
+                current_time += 2; // Assuming each job processing takes 2 seconds
+            }
+
+            std::cout << "User    " << current_job.user << " finished job " << current_job.job_id << std::endl;
         }
     };
 
     // Create threads for the printer and scanner
-    std::thread printer_thread(process_job_with_mutex, std::ref(printer_queue), "Printer");
-    std::thread scanner_thread(process_job_with_mutex, std::ref(scanner_queue), "Scanner");
+    std::thread printer_thread(process_job, std::ref(printer_queue), "Printer");
+    std::thread scanner_thread(process_job, std::ref(scanner_queue), "Scanner");
 
     // Wait for threads to complete
     printer_thread.join();
@@ -233,6 +265,80 @@ void MutexesExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs
     std::cout << "All jobs processed with mutexes!" << std::endl;
 }
 
+// Semaphore for controlling access to the job queues
+std::binary_semaphore printer_semaphore(1); // Semaphore for printer
+std::binary_semaphore scanner_semaphore(1); // Semaphore for scanner
+
+void SemaphoreExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs) {
+    // Populate printer and scanner queues
+    for (const auto& job : printerJobs) {
+        printer_queue.push(job);
+    }
+    for (const auto& job : scannerJobs) {
+        scanner_queue.push(job);
+    }
+
+    // Local variable to track the current time
+    int current_time = 0;
+
+    // Function to simulate processing on a shared resource
+    auto process_job = [&current_time](std::queue<Job>& job_queue, const std::string& resource_name, std::binary_semaphore& semaphore) {
+        while (true) {
+            Job current_job;
+
+            // Wait for access to the job queue
+            semaphore.acquire();
+
+            {
+                if (job_queue.empty()) {
+                    semaphore.release(); // Release semaphore if no jobs are left
+                    break; // Exit if no more jobs
+                }
+                current_job = job_queue.front();
+                job_queue.pop();
+            }
+
+            // Release the semaphore after accessing the job queue
+            semaphore.release();
+
+            // Wait until the current time reaches the job's arrival time
+            if (current_time < current_job.arrival_time) {
+                std::this_thread::sleep_for(std::chrono::seconds(current_job.arrival_time - current_time));
+                current_time = current_job.arrival_time; // Update current time to the job's arrival time
+            }
+
+            // Process the job
+            while (current_job.length > 0) {
+                // Simulate processing 2 pages
+                int pages_to_process = std::min(2, current_job.length);
+                std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate processing time
+
+                current_job.length -= pages_to_process;
+
+                std::cout << "User      " << current_job.user << " used " << resource_name << " for job id: " << current_job.job_id <<
+                          " and processed " << pages_to_process << " pages, pages left: " << current_job.length << std::endl;
+
+                // Increment current time for the next job processing
+                current_time += 2; // Assuming each job processing takes 2 seconds
+            }
+
+            std::cout << "User      " << current_job.user << " finished job " << current_job.job_id << std::endl;
+        }
+    };
+
+    // Create threads for the printer and scanner
+    std::thread printer_thread(process_job, std::ref(printer_queue), "Printer", std::ref(printer_semaphore));
+    std::thread scanner_thread(process_job, std::ref(scanner_queue), "Scanner", std::ref(scanner_semaphore));
+
+    // Wait for threads to complete
+    printer_thread.join();
+    scanner_thread.join();
+
+    std::cout << "All jobs processed with semaphores!" << std::endl;
+}
+
+
+
 int main() {
     srand(time(NULL)); // Seed random number generator
 
@@ -240,7 +346,7 @@ int main() {
     auto [printerJobs, scannerJobs] = order_queue('A'); // printer and scanner job vectors
 
     // Call unsynchronized execution
-    Unsynchronised_Execution(printerJobs, scannerJobs);
+    SemaphoreExecution(printerJobs, scannerJobs);
 
     return 0;
 }
