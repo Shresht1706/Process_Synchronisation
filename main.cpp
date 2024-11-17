@@ -2,17 +2,16 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>  // For sleep function
-#include <pthread.h> // For threading
-#include <queue>>
+#include <thread>    // For threads
+#include <chrono>    // For sleep_for
+#include <vector>
+#include <queue>
 #include <iostream>
 
 #define Num_Users 5           // Number of users (threads)
 #define Num_Jobs_Per_User 10  // Number of jobs per user
 #define Job_Length_Types 3
 #define Time_Quantum 2
-
-
-
 
 typedef enum { PRINT, SCAN } JobType;
 
@@ -21,19 +20,12 @@ typedef struct {
     JobType job_type;
     int length;
     int arrival_time;
-    int waiting_time;
+    int job_id;
 } Job;
 
-pthread_mutex_t array_mutex = PTHREAD_MUTEX_INITIALIZER; //only for adding to the lists
-
-std::queue<Job> printer_queue; // Global queue for printer jobs
-std::queue<Job> scanner_queue; // Global queue for scanner jobs
-
-
-int printer = 0;
-int scanner = 0;
-
-std::queue<Job> job_queue;
+// Global queues for jobs
+std::queue<Job> printer_queue;
+std::queue<Job> scanner_queue;
 
 // Function to generate a single job for a user
 Job generate_job(char user, int job_index) {
@@ -66,54 +58,92 @@ Job generate_job(char user, int job_index) {
     return job;
 }
 
-
 // Function to generate jobs and categorize them into printer and scanner vectors
 std::pair<std::vector<Job>, std::vector<Job>> order_queue(char user) {
     std::vector<Job> printer_jobs;
     std::vector<Job> scanner_jobs;
 
-    for (int i = 0; i < Num_Users; i++) {
-        char users[Num_Users] = { '1', '2', '3', '4', '5' };
-    for (int i = 0; i < Num_Jobs_Per_User; i++) {
-        Job job = generate_job(user, i);
+    char users_id[Num_Users] = { '1', '2', '3', '4', '5' }; // User IDs array
 
-        // Output the generated job
-        std::cout << "User : " << user
-                  << ", Job : " << (job.job_type == PRINT ? "Print" : "Scan")
-                  << ", Length : " << job.length
-                  << ", Arrival Time : " << job.arrival_time << std::endl;
+    for (int u = 0; u < Num_Users; u++) { // Loop through users
+        char current_user = users_id[u]; // Get the current user's ID
+        for (int i = 0; i < Num_Jobs_Per_User; i++) { // Generate jobs for each user
+            Job job = generate_job(current_user, i); // Generate a job for the user
+            job.job_id = i+1;
 
-        // Categorize job
-        if (job.job_type == PRINT) {
-            printer_jobs.push_back(job);
-        } else {
-            scanner_jobs.push_back(job);
+            // Output the generated job
+            std::cout << "User : " << current_user
+                << ", Job : " << (job.job_type == PRINT ? "Print" : "Scan")
+                << " Job ID : " << job.job_id
+                << ", Length : " << job.length
+                << ", Arrival Time : " << job.arrival_time << std::endl;
+
+            // Categorize job
+            if (job.job_type == PRINT) {
+                printer_jobs.push_back(job);
+            } else {
+                scanner_jobs.push_back(job);
+            }
         }
     }
 
     return {printer_jobs, scanner_jobs};
 }
 
+// Function to simulate processing on a shared resource
+void process_job(std::queue<Job>& job_queue, const std::string& resource_name) {
+    while (!job_queue.empty()) {
+        Job current_job = job_queue.front();
+        job_queue.pop();
 
+        // Simulate processing 2 pages
+        int pages_to_process = std::min(2, current_job.length);
+        std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate processing time
 
+        current_job.length -= pages_to_process;
+
+        std::cout << "User " << current_job.user << " used " << resource_name << " for job id : " << current_job.job_id <<
+                  " and processed 2 pages, pages left: " << current_job.length << std::endl;
+
+        // If there are still pages left, re-enqueue the job
+        if (current_job.length > 0) {
+            job_queue.push(current_job);
+        } else {
+            std::cout << "User " << current_job.user << " " << "finished job" << current_job.job_id << std::endl;
+        }
+    }
+}
+
+// Function to handle unsynchronized execution
+void UnsynchronizedExecution(std::vector<Job> printerJobs, std::vector<Job> scannerJobs) {
+    // Populate printer and scanner queues
+    for (const auto& job : printerJobs) {
+        printer_queue.push(job);
+    }
+    for (const auto& job : scannerJobs) {
+        scanner_queue.push(job);
+    }
+
+    // Create threads for the printer and scanner
+    std::thread printer_thread(process_job, std::ref(printer_queue), "Printer");
+
+    std::thread scanner_thread(process_job, std::ref(scanner_queue), "Scanner");
+
+    // Wait for threads to complete
+    printer_thread.join();
+    scanner_thread.join();
+
+    std::cout << "All jobs processed!" << std::endl;
+}
 
 int main() {
     srand(time(NULL)); // Seed random number generator
 
-    printf("\nExecuting jobs without any synchronization:\n");
+    // Generate and categorize jobs
+    auto [printerJobs, scannerJobs] = order_queue('A'); // Generate printer and scanner job vectors
 
-    pthread_t threads[Num_Users]; // Array to hold thread IDs
-    // User identifiers
-
-    // Create threads for each user
-    for (int i = 0; i < Num_Users; i++) {
-        pthread_create(&threads[i], NULL, , (void *)&users[i]);
-    }
-
-    // Wait for all threads to finish
-    for (int i = 0; i < Num_Users; i++) {
-        pthread_join(threads[i], NULL);
-    }
+    // Call unsynchronized execution
+    UnsynchronizedExecution(printerJobs, scannerJobs);
 
     return 0;
 }
